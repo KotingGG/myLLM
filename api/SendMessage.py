@@ -1,21 +1,15 @@
-# Отправка сообщения модели
-import json
-import requests
+from langchain_ollama import ChatOllama
+from langchain_core.messages import SystemMessage, HumanMessage
 
+llm = ChatOllama(
+    model="mistral",
+    temperature=0,
+)
+messages = [
+    SystemMessage(content="You translate Russian to English. Translate the user sentence and write only result:"),
+    HumanMessage(content="Я создам успешный AI-продукт!")
+]
 
-OLLAMA_HOST = "localhost"
-OLLAMA_PORT = "11434"
-SEND_MESSAGE_URL = "api/generate"
-URL = f"http://{OLLAMA_HOST}:{OLLAMA_PORT}/{SEND_MESSAGE_URL}"
-
-MODEL_NAME = "mistral"
-PROMPT = "How are you?" # Сообщение пользователя
-PARAMETERS = {
-    "model": MODEL_NAME,
-    "prompt": PROMPT,
-    "stream": False, # Определяет, как будет возвращаться ответ
-}
-
-response = requests.post(url=URL, json=PARAMETERS)
-data = response.json()
-print(json.dumps(data, indent=4))
+user_message = "Где растут кактусы?"
+answer = llm.invoke(user_message)
+print(answer.content)
