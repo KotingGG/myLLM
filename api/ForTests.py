@@ -1,66 +1,44 @@
-from langchain_core.chat_history import InMemoryChatMessageHistory
-from langchain_core.runnables.history import RunnableWithMessageHistory
+#API_KEY = "a9WI7WF5a1H4epzelCJOd8adPkkGLTFc" # ключ доступа к API
+#MODEL_NAME = "mistral-large-latest" # название модели
 from langchain_ollama import ChatOllama
-from langchain_core.output_parsers import StrOutputParser
-from langchain_core.messages import trim_messages
-from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
+from langchain_core.tools import tool
+from pydantic import Field
+from langchain_core.messages import HumanMessage
+
+# вместо базы данных
+ORDERS_STATUSES_DATA = {
+    "a42": "Доставляется",
+    "b61": "Выполнен",
+    "k37": "Отменен",
+}
 
 
-# В коде ниже мы инициализируем значения для session_id и создаем объект пустой истории сообщений для единственного пользователя приложения. 
-# В историю сообщений будут попадать сообщения пользователя и ответы модели.
-DEFAULT_SESSION_ID = "default"
-chat_history = InMemoryChatMessageHistory()
+#@tool — это декоратор, который автоматически превращает вашу обычную Python-функцию в полноценный Tool — инструмент, который языковая модель (LLM) может понимать и использовать
 
-
-messages = [
-    ("system", "You are an expert in {domain}. Your task is answer the question as short as possible"),
-    MessagesPlaceholder("history"), # включаем историю
-    ("human", "{question}"),
-]
-prompt = ChatPromptTemplate(messages)
-
-trimmer = trim_messages(
-    strategy="last",
-    token_counter=len,
-    max_tokens=10,
-    start_on="human",
-    end_on="human",
-    include_system=True,
-    allow_partial=False
-)
+#Представьте, что у вас есть функция, и вы хотите, чтобы ИИ мог ею пользоваться. 
+# Для этого ему нужно объяснить: что эта функция делает, какие параметры принимает и что возвращает. 
+# Без @tool вам пришлось бы вручную создавать схему (например, на Pydantic) для описания этих правил. Декоратор @tool делает всю эту рутинную работу за вас.
+@tool
+def get_order_status(order_id: str = Field(description="Identifier of order")) -> str:
+    #  это крайне важно. Декоратор использует ее как описание всего инструмента.
+    #  Модель читает это описание, чтобы решить, нужно ли вызывать эту функцию для ответа на вопрос пользователя. Без docstring инструмент не будет работать правильно.
+    """Get status of order by order identifier"""
+    return ORDERS_STATUSES_DATA.get(order_id, f"Не существует заказа")
 
 llm = ChatOllama(
     model="mistral",
-    temperature=0,
-    num_predict=150
+    temperature=0
 )
 
-# Наибольший интерес представляет итоговая цепочка Runnable-объектов. Для наглядности сначала составляется цепочка из промпта, триммера и модели. 
-# Её входными данными будет словарь с доменом (domain), новым сообщением пользователя (question) и историей прошлого взаимодействия (history). 
-# Выходным результатом этой цепочки будет сообщение-ответ модели типа AIMessage.
-chain = prompt | trimmer | llm
+llm_with_tools = llm.bind_tools([get_order_status])
+ai_message = llm_with_tools.invoke("What about my order with id equal to k37?")
 
-# Как мы знаем, цепочка Runnable-компонентов также является Runnable-компонентом, поэтому мы её можем использовать в RunnableWithMessageHistory. 
-# Заметим, что здесь используется параметр history_messages_key, который задает то, по какому ключу будут лежать данные о истории сообщений. 
-# Другой параметр input_messages_key используется для того, чтобы указать, что входными данными для RunnableWithMessageHistory является словарь, 
-# поэтому в качестве значения параметра используется один из ключей во входном словаре, например, question.
-chain_with_history = RunnableWithMessageHistory(
-    chain, lambda session_id: chat_history,
-    input_messages_key="question", history_messages_key="history"
-)
+for tool_call in ai_message.tool_calls:
+    if tool_call["name"] == get_order_status.name:
+        tool_message = get_order_status.invoke(tool_call)
 
-# Итоговая цепочка завершается с помощью Output Parser, который берет из выходного сообщения только текст контента ответа модели.
-final_chain = chain_with_history | StrOutputParser()
-
-
-domain = input('Choice domain area: ')
-while True:
-    print() # для красоты
-    user_question = input('You: ')
-    print('Ai: ', end="")
-    for answer_chunk in final_chain.stream(
-            {"domain": domain, "question": user_question},
-            config={"configurable": {"session_id": DEFAULT_SESSION_ID}},
-    ):
-        print(answer_chunk, end="")
-    print() # для красоты
+result = llm_with_tools.invoke([
+    HumanMessage("What about my order with id equal to k37?"),
+    ai_message,
+    tool_message
+])
