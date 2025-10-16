@@ -15,11 +15,24 @@ ollama run mistral
 - Используются до жути много библиотек, ведь тестируются разные методы. Самые популярные:
 ```bash
 pip install langchain
+```
+```bash
 pip install langchain_ollama
+```
+```bash
 pip install langchain_community
+```
+```bash
 pip install langchain_core
+```
+```bash
 pip install langgraph
+```
+```bash
 pip install pydantic
+```
+```bash
+pip install chainlit
 ```
 # Другое
 
